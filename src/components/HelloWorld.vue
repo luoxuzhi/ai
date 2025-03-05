@@ -9,12 +9,13 @@ defineProps({
 
 const count = ref(0)
 const content = ref('')
+const htmlContent = ref('')
 const currentUserId = ref('default_user')
-const currentSessionId = ref('default_session')
+const currentSessionId = ref('default_session4')
 const userSessions = ref({})
 
 const testFunc = () => {
-  const prompt = '第三高的呢？'
+  const prompt = '世界上最高的山是哪座？'
   // const prompt = '5+7等于多少'
 
   fetch('/api/your-backend-endpoint', {
@@ -43,6 +44,7 @@ const testFunc = () => {
           const chunk = decoder.decode(value, { stream: true })
           console.log(chunk)
           content.value += chunk
+          htmlContent.value = processResponse(content.value)
           return read()
         })
       }
@@ -77,6 +79,80 @@ const fetchUserSessions = () => {
     .catch((error) => console.error('Error fetching user sessions:', error))
 }
 
+function processResponse(response) {
+  const lines = response.split('\n')
+  let html = ''
+  let inTable = false
+  let tableRows = []
+  let inCode = false
+  let codeContent = ''
+
+  lines.forEach((line) => {
+    if (line.startsWith('### ')) {
+      if (inTable) {
+        html += buildTable(tableRows)
+        tableRows = []
+        inTable = false
+      }
+      if (inCode) {
+        html += buildCode(codeContent)
+        codeContent = ''
+        inCode = false
+      }
+      html += `<h3>${line.replace('### ', '')}</h3>`
+    } else if (line.startsWith('|')) {
+      if (!inTable) {
+        inTable = true
+      }
+      const cells = line.split('|').filter((cell) => cell.trim() !== '')
+      tableRows.push(cells)
+    } else if (line.startsWith('```')) {
+      if (inCode) {
+        html += buildCode(codeContent)
+        codeContent = ''
+        inCode = false
+      } else {
+        inCode = true
+      }
+    } else if (inCode) {
+      codeContent += line + '\n'
+    } else if (line.trim() !== '') {
+      if (inTable) {
+        html += buildTable(tableRows)
+        tableRows = []
+        inTable = false
+      }
+      html += `<p>${line}</p>`
+    }
+  })
+
+  if (inTable) {
+    html += buildTable(tableRows)
+  }
+  if (inCode) {
+    html += buildCode(codeContent)
+  }
+
+  return html
+}
+
+function buildTable(rows) {
+  let tableHTML = '<table>'
+  rows.forEach((row, index) => {
+    tableHTML += index === 0 ? '<thead><tr>' : '<tbody><tr>'
+    row.forEach((cell) => {
+      tableHTML += index === 0 ? `<th>${cell}</th>` : `<td>${cell}</td>`
+    })
+    tableHTML += index === 0 ? '</tr></thead>' : '</tr></tbody>'
+  })
+  tableHTML += '</table>'
+  return tableHTML
+}
+
+function buildCode(code) {
+  return `<pre><code class="language-javascript">${code.trim()}</code></pre>`
+}
+
 testFunc()
 fetchUserSessions()
 </script>
@@ -90,7 +166,7 @@ fetchUserSessions()
       Edit
       <code>components/HelloWorld.vue</code> to test HMRy
     </p>
-    <p>{{ content }}</p>
+    <div v-html="htmlContent"></div>
   </div>
 
   <div>
